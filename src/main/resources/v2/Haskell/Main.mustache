@@ -1,0 +1,17 @@
+module Main where
+
+import {{title}}.API
+
+import Data.String (fromString)
+import System.Environment (getArgs)
+import qualified Network.Wai.Handler.Warp as Warp
+
+main :: IO ()
+main = do
+  host:port:_ <- getArgs
+  Warp.runSettings (
+    Warp.setHost (fromString host) $
+    Warp.setPort (read port) $
+    Warp.defaultSettings
+    ) $ run{{title}App
+

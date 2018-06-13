@@ -18,3 +18,4 @@ io.swagger.codegen.languages.php.PhpClientCodegen
 io.swagger.codegen.languages.swift.Swift3Codegen
 io.swagger.codegen.languages.swift.Swift4Codegen
 io.swagger.codegen.languages.typescript.TypeScriptAngularClientCodegen
+io.swagger.codegen.languages.haskell.HaskellServantServerCodegen
