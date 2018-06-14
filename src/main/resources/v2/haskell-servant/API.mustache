@@ -10,13 +10,11 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE InstanceSigs #-}
--- {-# OPTIONS_GHC
--fno-warn-unused-binds -fno-warn-unused-imports -fcontext-stack=328 #-}
+-- {-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-unused-imports -fcontext-stack=328 #-}
 
 module {{title}}.API
   -- * Client and Server
-  ( ServerConfig(..)
-  , run{{title}}Server
+  ( run{{title}}Server
   , {{title}}API
   ) where
 

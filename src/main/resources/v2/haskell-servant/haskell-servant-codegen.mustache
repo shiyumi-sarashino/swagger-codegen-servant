@@ -13,11 +13,12 @@ cabal-version:       >=1.24.2
 executable main
   hs-source-dirs:      src
   main-is:             Main.hs
-  exposed-modules:     {{title}}.API
+  other-modules:       {{title}}.API
                      , {{title}}.Types
   ghc-options:         -Wall
   build-depends:       base
                      , aeson
+                     , time
                      , text
                      , containers
                      , network-uri

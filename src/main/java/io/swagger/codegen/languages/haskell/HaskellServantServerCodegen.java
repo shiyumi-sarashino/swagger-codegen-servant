@@ -30,7 +30,12 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public class HaskellServantServerCodegen extends DefaultCodegenConfig implements CodegenConfig {
+
+    static Logger LOGGER = LoggerFactory.getLogger(HaskellServantServerCodegen.class);
 
     // source folder where to write the files
     protected String sourceFolder = "src";
@@ -127,14 +132,6 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
      */
         additionalProperties.put("apiVersion", apiVersion);
 
-    /*
-     * Supporting Files.  You can write single files for the generator with the
-     * entire object tree available.  If the input file has a suffix of `.mustache
-     * it will be processed by the template engine.  Otherwise, it will be copied
-     */
-        modelTemplateFiles.put("README.mustache", ".md");
-        modelTemplateFiles.put("stack.mustache", ".yaml");
-        modelTemplateFiles.put("Setup.mustache", ".hs");
 
     /*
      * Language Specific Primitives.  These types will not trigger imports by
@@ -150,7 +147,9 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
                         "Char",
                         "Double",
                         "List",
-                        "FilePath"
+                        "FilePath",
+			"Day",
+			"POSIXTime"
                 )
         );
 
@@ -247,7 +246,15 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         }
         String apiName = joinStrings("", wordsCaps);
 
+       /*
+        * Supporting Files.  You can write single files for the generator with the
+        * entire object tree available.  If the input file has a suffix of `.mustache
+        * it will be processed by the template engine.  Otherwise, it will be copied
+        */
         // Set the filenames to write for the API
+        supportingFiles.add(new SupportingFile("README.mustache", "", "README.md"));
+        supportingFiles.add(new SupportingFile("stack.mustache", "", "stack.yaml"));
+        supportingFiles.add(new SupportingFile("Setup.mustache", "", "Setup.hs"));
         supportingFiles.add(new SupportingFile("haskell-servant-codegen.mustache", "", cabalName + ".cabal"));
         supportingFiles.add(new SupportingFile("API.mustache", "src/" + apiName, "API.hs"));
         supportingFiles.add(new SupportingFile("Types.mustache", "src/" + apiName, "Types.hs"));
@@ -359,8 +366,18 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
     private List<String> pathToServantRoute(String path, List<CodegenParameter> pathParams) {
         // Map the capture params by their names.
         HashMap<String, String> captureTypes = new HashMap<String, String>();
+	if(pathParams.isEmpty()){
+            LOGGER.info("param null");
+	}
         for (CodegenParameter param : pathParams) {
             captureTypes.put(param.baseName, param.dataType);
+            LOGGER.info("print succ");
+	    if(null==param.baseName){
+	        LOGGER.info("failed baseName");
+	    }
+	    if(null==param.dataType){
+	        LOGGER.info("failed dataType");
+	    }
         }
 
         // Cut off the leading slash, if it is present.

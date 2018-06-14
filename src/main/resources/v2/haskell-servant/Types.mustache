@@ -53,8 +53,8 @@ newtype {{classname}} = {{classname}} {{vendorExtensions.x-customNewtype}} deriv
 
 -- Remove a field label prefix during JSON parsing.
 -- Also perform any replacements for special characters.
-removeFieldLabelPrefix :: Bool -> String -> Options
-removeFieldLabelPrefix forParsing prefix =
+removeFieldLabelPrefix :: String -> Options
+removeFieldLabelPrefix prefix =
   defaultOptions
   {fieldLabelModifier = fromMaybe (error ("did not find prefix " ++ prefix)) . headLower .  stripPrefix prefix . replaceSpecialChars}
   where
