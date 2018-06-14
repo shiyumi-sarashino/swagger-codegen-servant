@@ -92,7 +92,7 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
      * Template Location.  This is the location which templates will be read from.  The generator
      * will use the resource stream to attempt to read the templates.
      */
-        embeddedTemplateDir = templateDir = "haskell-servant";
+        embeddedTemplateDir = templateDir = "v2/haskell-servant";
 
     /*
      * Api Package.  Optional, if needed, this can be used in templates
@@ -132,9 +132,9 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
      * entire object tree available.  If the input file has a suffix of `.mustache
      * it will be processed by the template engine.  Otherwise, it will be copied
      */
-        supportingFiles.add(new SupportingFile("README.mustache", "", "README.md"));
-        supportingFiles.add(new SupportingFile("stack.mustache", "", "stack.yaml"));
-        supportingFiles.add(new SupportingFile("Setup.mustache", "", "Setup.hs"));
+        modelTemplateFiles.put("README.mustache", ".md");
+        modelTemplateFiles.put("stack.mustache", ".yaml");
+        modelTemplateFiles.put("Setup.mustache", ".hs");
 
     /*
      * Language Specific Primitives.  These types will not trigger imports by
@@ -171,7 +171,7 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         typeMapping.put("number", "Double");
         typeMapping.put("integer", "Int");
         typeMapping.put("any", "Value");
-        typeMapping.put("UUID", "Text");
+        typeMapping.put("uuid", "Text");
         typeMapping.put("ByteArray", "Text");
 
         importMapping.clear();
@@ -251,7 +251,7 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         supportingFiles.add(new SupportingFile("haskell-servant-codegen.mustache", "", cabalName + ".cabal"));
         supportingFiles.add(new SupportingFile("API.mustache", "src/" + apiName, "API.hs"));
         supportingFiles.add(new SupportingFile("Types.mustache", "src/" + apiName, "Types.hs"));
-        supportingFiles.add(new SupportingFile("Main.mustache", "src/" + apiName, "Main.hs"));
+        supportingFiles.add(new SupportingFile("Main.mustache", "src/", "Main.hs"));
 
 
         additionalProperties.put("title", apiName);
@@ -287,12 +287,12 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         if (s instanceof ArraySchema) {
             ArraySchema sp = (ArraySchema) s;
             Schema inner = sp.getItems();
-	    return String.format("%s<%s>", getSchemaType(s), getTypeDeclaration(inner));
-            // return "[" + getTypeDeclaration(inner) + "]";
+	    // return String.format("%s<%s>", getSchemaType(s), getTypeDeclaration(inner));
+            return "[" + getTypeDeclaration(inner) + "]";
         } else if (s instanceof MapSchema || s.getAdditionalProperties() != null) {
             Schema inner = (Schema) s.getAdditionalProperties();
-            return getSchemaType(s) + "<String, " + getTypeDeclaration(inner) + ">";
-            // return "Map.Map String " + getTypeDeclaration(inner);
+            // return getSchemaType(s) + "<String, " + getTypeDeclaration(inner) + ">";
+            return "Map.Map String " + getTypeDeclaration(inner);
         }
         return fixModelChars(super.getTypeDeclaration(s));
     }
@@ -420,9 +420,6 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         // Query parameters appended to routes
         for (CodegenParameter param : op.queryParams) {
             String paramType = param.dataType;
-            if (getBooleanValue(param, CodegenConstants.IS_LIST_CONTAINER_EXT_NAME)) {
-                paramType = makeQueryListType(paramType, param.collectionFormat);
-            }
             path.add("QueryParam \"" + param.baseName + "\" " + paramType);
             type.add("Maybe " + param.dataType);
         }
@@ -451,9 +448,6 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
             path.add("Header \"" + param.baseName + "\" " + param.dataType);
 
             String paramType = param.dataType;
-            if (getBooleanValue(param, CodegenConstants.IS_LIST_CONTAINER_EXT_NAME)) {
-                paramType = makeQueryListType(paramType, param.collectionFormat);
-            }
             type.add("Maybe " + paramType);
         }
 
@@ -478,19 +472,6 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
             param.vendorExtensions.put("x-formPrefix", camelize(op.operationId, true));
         }
         return op;
-    }
-
-    private String makeQueryListType(String type, String collectionFormat) {
-        type = type.substring(1, type.length() - 1);
-        switch(collectionFormat) {
-            case "csv": return "(QueryList 'CommaSeparated (" + type + "))";
-            case "tsv": return "(QueryList 'TabSeparated (" + type + "))";
-            case "ssv": return "(QueryList 'SpaceSeparated (" + type + "))";
-            case "pipes": return "(QueryList 'PipeSeparated (" + type + "))";
-            case "multi": return "(QueryList 'MultiParamArray (" + type + "))";
-            default:
-                throw new UnsupportedOperationException();
-        }
     }
 
     private String fixOperatorChars(String string) {
@@ -518,6 +499,7 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 
     // Remove characters from a string that do not belong in a model classname
     private String fixModelChars(String string) {
+	if(string==null){return null;}
         return string.replace(".", "").replace("-", "");
     }
 
@@ -539,24 +521,23 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         }
 
         // Create newtypes for things with non-object types
-        String dataOrNewtype = "data";
         // check if it's a ModelImpl before casting
         //if (!(schema instanceof ModelImpl)) {
-            return model;
+        //    return model;
         //}
 
         //String modelType = ((ModelImpl)  schema).getType();
-       // String modelType = schema.getType();
-       // if(modelType != "object" && typeMapping.containsKey(modelType)) {
-       //     String newtype = typeMapping.get(modelType);
-       //     model.vendorExtensions.put("x-customNewtype", newtype);
-       // }
-       //
-       // // Provide the prefix as a vendor extension, so that it can be used in the ToJSON and FromJSON instances.
-       // model.vendorExtensions.put("x-prefix", prefix);
-       // model.vendorExtensions.put("x-data", dataOrNewtype);
-       //
-       // return model;
+        String modelType = schema.getType();
+        if(modelType != "object" && typeMapping.containsKey(modelType)) {
+            String newtype = typeMapping.get(modelType);
+            model.vendorExtensions.put("x-customNewtype", newtype);
+        }
+       
+        // Provide the prefix as a vendor extension, so that it can be used in the ToJSON and FromJSON instances.
+        model.vendorExtensions.put("x-prefix", prefix);
+        model.vendorExtensions.put("x-data", "data");
+       
+        return model;
     }
 
     @Override

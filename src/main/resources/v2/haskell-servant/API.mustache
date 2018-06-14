@@ -53,7 +53,7 @@ instance ToFormUrlEncoded {{vendorExtensions.x-formName}}
 
 {{#apiInfo}}
 -- status code 4xx
-{{#apis}}{{#operations}}{{#operation}}
+{{#errStatuses}}{{#errStatus}}
 data {{vendorExtensions.x-statusName}} = {{vendorExtensions.x-statusName}} deriving (Eq, Read, Show)
 instance ToJSON {{vendorExtensions.x-statusName}} where
   toJSON :: {{vendorExtensions.x-statusName}} -> Value
@@ -65,7 +65,7 @@ instance FromJSON {{vendorExtensions.x-statusName}} where
 instance ErrStatus {{vendorExtensions.x-statusName}} where
   toErrStatus :: {{vendorExtensions.x-statusName}} -> Status
   toErrStatus _ = status{{vendorExtensions.x-statusCode}}
-{{/operations}}{{/operation}}
+{{/errStatus}}{{/errStatuses}}
 {{/apiInfo}}
 
 {{#apiInfo}}
@@ -140,5 +140,5 @@ formatSeparatedQueryList char = T.intercalate (T.singleton char) . map toQueryPa
 -- not yet a webserver.
 run{{title}}App :: Application
 run{{title}}App = serve (Proxy::Proxy {{title}}API) {{titleLower}}Server
-
 {{/apiInfo}}
+
