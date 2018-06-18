@@ -3,6 +3,7 @@ package io.swagger.codegen.languages.haskell;
 import io.swagger.codegen.*;
 import io.swagger.codegen.languages.DefaultCodegenConfig;
 import io.swagger.codegen.CodegenParameter;
+import io.swagger.codegen.utils.ModelUtils;
 import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.OpenAPI;
 import io.swagger.v3.oas.models.PathItem;
@@ -11,6 +12,7 @@ import io.swagger.v3.oas.models.media.MapSchema;
 import io.swagger.v3.oas.models.media.ArraySchema;
 import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.parameters.*;
+import io.swagger.v3.oas.models.responses.ApiResponse;
 import static io.swagger.codegen.handlebars.helpers.ExtensionHelper.getBooleanValue;
 
 import com.github.jknack.handlebars.Handlebars;
@@ -170,7 +172,7 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         typeMapping.put("number", "Double");
         typeMapping.put("integer", "Int");
         typeMapping.put("any", "Value");
-        typeMapping.put("uuid", "Text");
+        typeMapping.put("UUID", "Text");
         typeMapping.put("ByteArray", "Text");
 
         importMapping.clear();
@@ -279,6 +281,19 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
             replacements.add(o);
         }
         additionalProperties.put("specialCharReplacements", replacements);
+
+        if (openAPI.getPaths() != null) {
+            for (String pathname : openAPI.getPaths().keySet()) {
+                PathItem pathItem = openAPI.getPaths().get(pathname);
+                final Operation[] operations = ModelUtils.createOperationArray(pathItem);
+                for (Operation operation : operations) {
+                    if (operation != null && operation.getTags() != null) {
+                        operation.addExtension("x-tags", operation.getTags());
+                    }
+                }
+            }
+        }
+
         super.preprocessOpenAPI(openAPI);
     }
 
@@ -363,21 +378,11 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
     // For example, the path /api/jobs/info/{id}/last would become:
     //      "api" :> "jobs" :> "info" :> Capture "id" IdType :> "last"
     // IdType is provided by the capture params.
-    private List<String> pathToServantRoute(String path, List<CodegenParameter> pathParams) {
+    private List<String> pathToServantRoute(String path, List<CodegenParameter> params) {
         // Map the capture params by their names.
         HashMap<String, String> captureTypes = new HashMap<String, String>();
-	if(pathParams.isEmpty()){
-            LOGGER.info("param null");
-	}
-        for (CodegenParameter param : pathParams) {
+        for (CodegenParameter param : params) {
             captureTypes.put(param.baseName, param.dataType);
-            LOGGER.info("print succ");
-	    if(null==param.baseName){
-	        LOGGER.info("failed baseName");
-	    }
-	    if(null==param.dataType){
-	        LOGGER.info("failed dataType");
-	    }
         }
 
         // Cut off the leading slash, if it is present.
@@ -390,7 +395,8 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         for (String piece : path.split("/")) {
             if (piece.startsWith("{") && piece.endsWith("}")) {
                 String name = piece.substring(1, piece.length() - 1);
-                pathComponents.add("Capture \"" + name + "\" " + captureTypes.get(name));
+		String capType = captureTypes.get(name);
+                pathComponents.add("Capture \"" + name + "\" " + capType);
             } else {
                 pathComponents.add("\"" + piece + "\"");
             }
@@ -398,6 +404,31 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 
         // Intersperse the servant route pieces with :> to construct the final API type
         return pathComponents;
+    }
+    private List<String> pathToFuncType(String path, List<CodegenParameter> params) {
+        // Map the capture params by their names.
+        HashMap<String, String> captureTypes = new HashMap<String, String>();
+        for (CodegenParameter param : params) {
+            captureTypes.put(param.baseName, param.dataType);
+        }
+
+        // Cut off the leading slash, if it is present.
+        if (path.startsWith("/")) {
+            path = path.substring(1);
+        }
+
+        // Convert the path into a list of servant route components.
+        List<String> capType = new ArrayList<String>();
+        for (String piece : path.split("/")) {
+            if (piece.startsWith("{") && piece.endsWith("}")) {
+                String name = piece.substring(1, piece.length() - 1);
+		String captureType = captureTypes.get(name);
+                capType.add(captureType);
+            }
+        }
+
+        // Intersperse the servant route pieces with :> to construct the final API type
+        return capType;
     }
 
     // Extract the arguments that are passed in the route path parameters
@@ -431,14 +462,22 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
     public CodegenOperation fromOperation(String resourcePath, String httpMethod, Operation operation, Map<String, Schema> definitions, OpenAPI openAPI) {
         CodegenOperation op = super.fromOperation(resourcePath, httpMethod, operation, definitions, openAPI);
 
-        List<String> path = pathToServantRoute(op.path, op.pathParams);
+        List<String> path = pathToServantRoute(op.path, op.allParams);
+        List<String> func = pathToFuncType(op.path, op.allParams);
         List<String> type = pathToClientType(op.path, op.pathParams);
+	List<Boolean> args = new ArrayList<Boolean>();
+
+        if(!func.isEmpty()){
+	    args.add(true);
+	}
 
         // Query parameters appended to routes
         for (CodegenParameter param : op.queryParams) {
             String paramType = param.dataType;
             path.add("QueryParam \"" + param.baseName + "\" " + paramType);
-            type.add("Maybe " + param.dataType);
+	    func.add("Maybe " + paramType);
+	    args.add(true);
+            type.add("Maybe " + paramType);
         }
 
         // Either body or form data parameters appended to route
@@ -447,29 +486,33 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         String bodyType = null;
         if (op.getHasBodyParam()) {
             for (CodegenParameter param : op.bodyParams) {
-                path.add("ReqBody '[JSON] " + param.dataType);
                 bodyType = param.dataType;
+                type.add(bodyType);
+	        func.add(bodyType);
+	        args.add(true);
+                path.add("ReqBody '[JSON] " + bodyType);
             }
         } else if(op.getHasFormParams()) {
             // Use the FormX data type, where X is the conglomerate of all things being passed
-            String formName = "Form" + camelize(op.operationId);
-            bodyType = formName;
-            path.add("ReqBody '[FormUrlEncoded] " + formName);
-        }
-        if(bodyType != null) {
+            bodyType = "Form" + camelize(op.operationId);
             type.add(bodyType);
+	    func.add(bodyType);
+	    args.add(true);
+            path.add("ReqBody '[FormUrlEncoded] " + bodyType);
         }
 
         // Special headers appended to route
         for (CodegenParameter param : op.headerParams) {
             path.add("Header \"" + param.baseName + "\" " + param.dataType);
-
             String paramType = param.dataType;
+	    func.add("Maybe " + paramType);
+	    args.add(true);
             type.add("Maybe " + paramType);
         }
 
 	// todo
 	// err status code
+	
 	path.add("NoThrow");
 
         // Add the HTTP method and return type
@@ -482,7 +525,10 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         }
         path.add("Verb '" + op.httpMethod.toUpperCase() + " 200 '[JSON] " + returnType);
         type.add("m " + returnType);
+        func.add("Handler (Envelope '[] " + returnType + ")");
 
+        op.vendorExtensions.put("x-funcs", joinStrings(" -> ", func));
+        op.vendorExtensions.put("x-args", args);
         op.vendorExtensions.put("x-routeType", joinStrings(" :> ", path));
         op.vendorExtensions.put("x-formName", "Form" + camelize(op.operationId));
         for(CodegenParameter param : op.formParams) {
@@ -575,5 +621,4 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
     public String escapeUnsafeCharacters(String input) {
         return input.replace("{-", "{_-").replace("-}", "-_}");
     }
-
 }

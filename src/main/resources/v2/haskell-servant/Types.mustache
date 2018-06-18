@@ -2,12 +2,8 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-unused-imports #-}
 
-module {{title}}.Types (
-{{#models}}
-{{#model}}
-  {{classname}} (..),
-{{/model}}
-{{/models}}
+module {{title}}.Types ({{#models}}{{#model}}
+  {{classname}} (..),{{/model}}{{/models}}
   ) where
 
 import Data.Time.Calendar (Day)
@@ -27,30 +23,22 @@ import Data.Function ((&))
 
 {{#models}}
 {{#model}}
-
 -- | {{description}}
 {{^vendorExtensions.x-customNewtype}}
 {{^parent}}
 {{vendorExtensions.x-data}} {{classname}} = {{classname}}
-  { {{#vars}}{{& name}} :: {{datatype}} -- ^ {{& description}}{{#hasMore}}  , {{/hasMore}}{{/vars}}
-  } deriving (Show, Eq, Generic)
-
+{{#vars}}{{#if @first}}  { {{else}}  , {{/if}}{{& name}} :: {{datatype}} -- ^ {{& description}}
+{{/vars}}  }deriving (Show, Eq, Generic)
 instance FromJSON {{classname}} where
   parseJSON = genericParseJSON (removeFieldLabelPrefix "{{vendorExtensions.x-prefix}}")
 instance ToJSON {{classname}} where
   toJSON = genericToJSON (removeFieldLabelPrefix "{{vendorExtensions.x-prefix}}")
-{{/parent}}
-{{#parent}}
+{{/parent}}{{#parent}}
 newtype {{classname}} = {{classname}} { un{{classname}} :: {{parent}} }
   deriving (Show, Eq, FromJSON, ToJSON, Generic)
-{{/parent}}
-{{/vendorExtensions.x-customNewtype}}
-{{#vendorExtensions.x-customNewtype}}
+{{/parent}}{{/vendorExtensions.x-customNewtype}}{{#vendorExtensions.x-customNewtype}}
 newtype {{classname}} = {{classname}} {{vendorExtensions.x-customNewtype}} deriving (Show, Eq, FromJSON, ToJSON, Generic)
-{{/vendorExtensions.x-customNewtype}}
-{{/model}}
-{{/models}}
-
+{{/vendorExtensions.x-customNewtype}}{{/model}}{{/models}}
 -- Remove a field label prefix during JSON parsing.
 -- Also perform any replacements for special characters.
 removeFieldLabelPrefix :: String -> Options

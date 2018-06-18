@@ -14,8 +14,8 @@
 
 module {{title}}.API
   -- * Client and Server
-  ( run{{title}}Server
-  , {{title}}API
+  ( run{{title}}App
+  , {{title}}Api
   ) where
 
 import {{title}}.Types
@@ -68,68 +68,20 @@ instance ErrStatus {{vendorExtensions.x-statusName}} where
 
 {{#apiInfo}}
 -- | Servant type-level API, generated from the Swagger spec for {{title}}.
-type {{title}}API
-    =    {{#apis}}{{#operations}}{{#operation}}{{& vendorExtensions.x-routeType}} -- '{{operationId}}' route, tags: '{{vendorExtensions.x-tags}}'{{#hasMore}}
-    :<|> {{/hasMore}}{{/operation}}{{/operations}}{{#hasMore}}
-    :<|> {{/hasMore}}{{/apis}}
-{{/apiInfo}}
+type {{title}}Api{{#apis}}{{#operations}}{{#if @first}}
+    = {{else}}    :<|> {{/if}}{{#operation}}{{#if @first}}{{else}}    :<|> {{/if}}{{& vendorExtensions.x-routeType}} -- '{{operationId}}' route, tags: {{vendorExtensions.x-tags}}
+{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
 
--- | List of elements parsed from a query.
-newtype QueryList (p :: CollectionFormat) a = QueryList
-  { fromQueryList :: [a]
-  } deriving (Functor, Applicative, Monad, Foldable, Traversable)
-
--- | Formats in which a list can be encoded into a HTTP path.
-data CollectionFormat
-  = CommaSeparated -- ^ CSV format for multiple parameters.
-  | SpaceSeparated -- ^ Also called "SSV"
-  | TabSeparated -- ^ Also called "TSV"
-  | PipeSeparated -- ^ `value1|value2|value2`
-  | MultiParamArray -- ^ Using multiple GET parameters, e.g. `foo=bar&foo=baz`. Only for GET params.
-
-instance FromHttpApiData a => FromHttpApiData (QueryList 'CommaSeparated a) where
-  parseQueryParam = parseSeparatedQueryList ','
-
-instance FromHttpApiData a => FromHttpApiData (QueryList 'TabSeparated a) where
-  parseQueryParam = parseSeparatedQueryList '\t'
-
-instance FromHttpApiData a => FromHttpApiData (QueryList 'SpaceSeparated a) where
-  parseQueryParam = parseSeparatedQueryList ' '
-
-instance FromHttpApiData a => FromHttpApiData (QueryList 'PipeSeparated a) where
-  parseQueryParam = parseSeparatedQueryList '|'
-
-instance FromHttpApiData a => FromHttpApiData (QueryList 'MultiParamArray a) where
-  parseQueryParam = error "unimplemented FromHttpApiData for MultiParamArray collection format"
-
-parseSeparatedQueryList :: FromHttpApiData a => Char -> Text -> Either Text (QueryList p a)
-parseSeparatedQueryList char = fmap QueryList . mapM parseQueryParam . T.split (== char)
-
-instance ToHttpApiData a => ToHttpApiData (QueryList 'CommaSeparated a) where
-  toQueryParam = formatSeparatedQueryList ','
-
-instance ToHttpApiData a => ToHttpApiData (QueryList 'TabSeparated a) where
-  toQueryParam = formatSeparatedQueryList '\t'
-
-instance ToHttpApiData a => ToHttpApiData (QueryList 'SpaceSeparated a) where
-  toQueryParam = formatSeparatedQueryList ' '
-
-instance ToHttpApiData a => ToHttpApiData (QueryList 'PipeSeparated a) where
-  toQueryParam = formatSeparatedQueryList '|'
-
-instance ToHttpApiData a => ToHttpApiData (QueryList 'MultiParamArray a) where
-  toQueryParam = error "unimplemented ToHttpApiData for MultiParamArray collection format"
-
-formatSeparatedQueryList :: ToHttpApiData a => Char ->  QueryList p a -> Text
-formatSeparatedQueryList char = T.intercalate (T.singleton char) . map toQueryParam . fromQueryList
-
-{{!example funcs}}
+{{#apiInfo}}{{#apis}}{{#operations}}{{#operation}}
+{{operationId}} :: {{& vendorExtensions.x-funcs}}
+{{operationId}} {{#each vendorExtensions.x-args}}_ {{/each}}= pureSuccEnvelope $ {{vendorExtensions.example}}
+{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
 
 {{#apiInfo}}
-{{titleLower}}Server :: Server {{title}}API
-{{titleLower}}Server = {{#apis}}{{#operations}}{{#operation}}{{operationId}}{{#hasMore}}
-                  :<|> {{/hasMore}}{{/operation}}{{/operations}}{{#hasMore}}
-                  :<|> {{/hasMore}}{{/apis}}
+{{titleLower}}Server :: Server {{title}}Api
+{{titleLower}}Server {{#apis}}{{#operations}}
+{{#if @first}}    =    {{else}}    :<|> {{/if}}{{#operation}}{{#if @first}}{{else}}
+    :<|> {{/if}}{{operationId}}{{/operation}}{{/operations}}{{/apis}}
 {{/apiInfo}}
 
 {{#apiInfo}}
@@ -137,6 +89,6 @@ formatSeparatedQueryList char = T.intercalate (T.singleton char) . map toQueryPa
 -- which you can think of as an "abstract" web application,
 -- not yet a webserver.
 run{{title}}App :: Application
-run{{title}}App = serve (Proxy::Proxy {{title}}API) {{titleLower}}Server
+run{{title}}App = serve (Proxy::Proxy {{title}}Api) {{titleLower}}Server
 {{/apiInfo}}
 
