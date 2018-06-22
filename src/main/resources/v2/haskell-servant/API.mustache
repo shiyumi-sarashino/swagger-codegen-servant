@@ -25,62 +25,41 @@ import Data.Aeson.Types (Parser)
 import Data.Proxy (Proxy(..))
 import Data.Text (Text, unpack)
 import Text.Read (readMaybe)
-import Data.Text.Read (decimal)
-import Data.Either (fromRight)
-import Data.Tuple (fst)
-import qualified Data.Text as T
-import Data.Time.Calendar (fromGregorian)
 import GHC.Generics (Generic)
-import Network.HTTP.Types (status400)
+import Network.HTTP.Types (Status(..){{#each status}}, status{{statusCode}}{{/each}})
 import Servant (Server, serve, Handler)
 import Servant.API
 import Servant.API.Verbs (StdMethod(..), Verb)
 import Servant.Checked.Exceptions (Envelope, ErrStatus(..), Throws, NoThrow, pureSuccEnvelope, pureErrEnvelope)
-import Web.FormUrlEncoded(ToForm, FromForm)
+{{#apiInfo}}{{#apis}}{{#operations}}{{#operation}}{{#hasFormParams}}import Web.FormUrlEncoded(ToForm, FromForm){{/hasFormParams}}{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
 import Network.Wai (Application)
 
 {{#apiInfo}}{{#apis}}{{#operations}}{{#operation}}{{#hasFormParams}}
-data {{vendorExtensions.x-formName}} = {{vendorExtensions.x-formName}}
-  { {{#formParams}}{{vendorExtensions.x-formPrefix}}{{vendorExtensions.x-formParamName}} :: {{dataType}}{{#hasMore}}
-  , {{/hasMore}}{{/formParams}}
-  } deriving (Show, Eq, Generic)
-
-instance FromFormUrlEncoded {{vendorExtensions.x-formName}}
-instance ToFormUrlEncoded {{vendorExtensions.x-formName}}
-    {{/hasFormParams}}{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
-
-{{#apiInfo}}
--- status code 4xx
-{{#errStatuses}}{{#errStatus}}
-data {{vendorExtensions.x-statusName}} = {{vendorExtensions.x-statusName}} deriving (Eq, Read, Show)
-instance ToJSON {{vendorExtensions.x-statusName}} where
-  toJSON :: {{vendorExtensions.x-statusName}} -> Value
-  toJSON _ = toJSON . show $ "{{vendorExtensions.x-errMessage}}"
-instance FromJSON {{vendorExtensions.x-statusName}} where
-  parseJSON :: Value -> Parser {{vendorExtensions.x-statusName}}
-  parseJSON = withText "{{vendorExtensions.x-statusName}}" $
-    maybe (fail "failed with {{vendorExtensions.x-statusName}}") pure . readMaybe . T.unpack
-instance ErrStatus {{vendorExtensions.x-statusName}} where
-  toErrStatus :: {{vendorExtensions.x-statusName}} -> Status
-  toErrStatus _ = status{{vendorExtensions.x-statusCode}}
-{{/errStatus}}{{/errStatuses}}
-{{/apiInfo}}
+-- data {{vendorExtensions.x-formName}} = {{vendorExtensions.x-formName}}
+--   { {{#formParams}}{{vendorExtensions.x-formPrefix}}{{vendorExtensions.x-formParamName}} :: {{dataType}}{{#hasMore}}
+--   , {{/hasMore}}{{/formParams}}
+--   } deriving (Show, Eq, Generic)
+-- 
+-- instance FromFormUrlEncoded {{vendorExtensions.x-formName}}
+-- instance ToFormUrlEncoded {{vendorExtensions.x-formName}}
+--     {{/hasFormParams}}{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
 
 {{#apiInfo}}
 -- | Servant type-level API, generated from the Swagger spec for {{title}}.
 type {{title}}Api{{#apis}}{{#operations}}{{#if @first}}
-    = {{else}}    :<|> {{/if}}{{#operation}}{{#if @first}}{{else}}    :<|> {{/if}}{{& vendorExtensions.x-routeType}} -- '{{operationId}}' route, tags: {{vendorExtensions.x-tags}}
+       = {{else}}    :<|> {{/if}}{{#operation}}{{#if @first}}{{else}}    :<|> {{/if}}{{& vendorExtensions.x-routeType}} -- '{{operationId}}' route, tags: {{vendorExtensions.x-tags}}
 {{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
 
 {{#apiInfo}}{{#apis}}{{#operations}}{{#operation}}
 {{operationId}} :: {{& vendorExtensions.x-funcs}}
 {{operationId}} {{#each vendorExtensions.x-args}}_ {{/each}}= pureSuccEnvelope $ {{vendorExtensions.example}}
-{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
+{{#each vendorExtensions.x-errStatus}}{{operationId}} {{#each vendorExtensions.x-args}}_ {{/each}}= pureErrEnvelope $ {{this}}
+{{/each}}{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
 
 {{#apiInfo}}
 {{titleLower}}Server :: Server {{title}}Api
 {{titleLower}}Server {{#apis}}{{#operations}}
-{{#if @first}}    =    {{else}}    :<|> {{/if}}{{#operation}}{{#if @first}}{{else}}
+{{#if @first}}       = {{else}}    :<|> {{/if}}{{#operation}}{{#if @first}}{{else}}
     :<|> {{/if}}{{operationId}}{{/operation}}{{/operations}}{{/apis}}
 {{/apiInfo}}
 

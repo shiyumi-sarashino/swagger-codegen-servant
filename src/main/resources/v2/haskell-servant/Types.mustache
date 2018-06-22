@@ -21,9 +21,36 @@ import Data.Function ((&))
 {{#imports}}import {{import}}
 {{/imports}}
 
+{{#apiInfo}}{{#if status}}-- common status code{{/if}}{{#each status}}
+data {{name}} = {{name}} deriving (Eq, Read, Show)
+instance ToJSON {{name}} where
+  toJSON :: {{name}} -> Value
+  toJSON _ = toJSON . show $ "{{& errMessage}}"
+instance FromJSON {{name}} where
+  parseJSON :: Value -> Parser {{name}}
+  parseJSON = withText "{{name}}" $
+    maybe (fail "could not parse as {{name}}") pure . readMaybe . unpack
+instance ErrStatus {{name}} where
+  toErrStatus :: {{name}} -> Status
+  toErrStatus _ = status{{statusCode}}
+{{/each}}{{/apiInfo}}
+{{#apiInfo}}{{#apis}}{{#operations}}{{#operation}}{{#if vendorExtensions.x-ad-hocStatus}}-- ad-hoc status code{{/if}}{{#each vendorExtensions.x-ad-hocStatus}}
+data {{name}} = {{name}} deriving (Eq, Read, Show)
+instance ToJSON {{name}} where
+  toJSON :: {{name}} -> Value
+  toJSON _ = toJSON . show $ "{{& errMessage}}"
+instance FromJSON {{name}} where
+  parseJSON :: Value -> Parser {{name}}
+  parseJSON = withText "{{name}}" $
+    maybe (fail "could not parse as {{name}}") pure . readMaybe . unpack
+instance ErrStatus {{name}} where
+  toErrStatus :: {{name}} -> Status
+  toErrStatus _ = status{{statusCode}}
+{{/each}}{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
+
 {{#models}}
 {{#model}}
--- | {{description}}
+-- | {{description}} {{operationId}}
 {{^vendorExtensions.x-customNewtype}}
 {{^parent}}
 {{vendorExtensions.x-data}} {{classname}} = {{classname}}

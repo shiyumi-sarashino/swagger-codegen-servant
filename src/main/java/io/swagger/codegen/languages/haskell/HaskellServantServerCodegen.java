@@ -10,9 +10,12 @@ import io.swagger.v3.oas.models.PathItem;
 import io.swagger.v3.oas.models.media.Schema;
 import io.swagger.v3.oas.models.media.MapSchema;
 import io.swagger.v3.oas.models.media.ArraySchema;
+import io.swagger.v3.oas.models.media.ObjectSchema;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.parameters.Parameter;
 import io.swagger.v3.oas.models.parameters.*;
 import io.swagger.v3.oas.models.responses.ApiResponse;
+import io.swagger.v3.oas.models.responses.ApiResponses;
 import static io.swagger.codegen.handlebars.helpers.ExtensionHelper.getBooleanValue;
 
 import com.github.jknack.handlebars.Handlebars;
@@ -287,12 +290,84 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
                 PathItem pathItem = openAPI.getPaths().get(pathname);
                 final Operation[] operations = ModelUtils.createOperationArray(pathItem);
                 for (Operation operation : operations) {
-                    if (operation != null && operation.getTags() != null) {
-                        operation.addExtension("x-tags", operation.getTags());
+                    if (operation != null){
+			if(operation.getTags() != null) {
+                            operation.addExtension("x-tags", operation.getTags());
+			}
+		        if(operation.getOperationId()!=null){
+		            String opId = operation.getOperationId();
+			    // todo RequestBody and Responses datatype annotation to description
+			    // if description start with '-TypeName ' then use 'description.split(" ")[1]'
+		            //LOGGER.info(operation.toString());
+	                    Map<String, ApiResponse> resps = operation.getResponses();
+			    Set<String> keys = resps.keySet();
+	                    List<Map<String, Object>> status = new ArrayList<>();
+			    for(String key : keys){
+                                if(Integer.parseInt(key)/100 == 2){
+			            LOGGER.info(key);
+			            LOGGER.info(resps.get(key).getDescription());
+			            //resps.get(key).description = "prefix";
+				}
+			    }
+		        }
                     }
                 }
             }
         }
+	if (openAPI.getComponents() != null && openAPI.getComponents().getResponses() != null) {
+	    Map<String, ApiResponse> apiResponses = openAPI.getComponents().getResponses();
+	    List<Map<String, Object>> status = new ArrayList<>();
+	    Map<String, Schema> schemas = new HashMap<String, Schema>();
+	    if(openAPI.getComponents().getSchemas() != null){
+	        schemas = openAPI.getComponents().getSchemas();
+	    }
+
+            for (String key : apiResponses.keySet()) {
+                Map<String, Object> o = resp2statusCode(apiResponses.get(key), openAPI.getComponents().getSchemas());
+
+                //Map<String, Object> o = new HashMap<>();
+		//if(apiResponses.get(key).getContent()!=null 
+		//		&& apiResponses.get(key).getContent().get("application/json")!=null 
+		//		&& apiResponses.get(key).getContent().get("application/json").getSchema()!=null){
+                //
+		//    Schema schema = new Schema();
+		//    Schema json = apiResponses.get(key).getContent().get("application/json").getSchema();
+		//    if(json.get$ref()!=null){
+		//        String ref = json.get$ref();
+		//        ArrayList<String> refls = new ArrayList(Arrays.asList(ref.split("/")));
+		//        ref = refls.get(refls.size() - 1).toString();
+                //        final Map<String, Schema> propertyMap = schemas.get(ref).getProperties();
+		//        ArrayList<Schema> ss = new ArrayList<>(propertyMap.values());
+	        //        //get schema from description in #/components/schema/{ref}/content/schema/properties/{firstItem}
+		//        schema = ss.get(0);
+                //    }else{
+                //        final Map<String, Schema> propertyMap = json.getProperties();
+		//        ArrayList<Schema> ss = new ArrayList<>(propertyMap.values());
+	        //        //get schema from description in #/components/responses/{keyName}/content/schema/properties/{firstItem}
+		//        schema = ss.get(0);
+		//    }
+		//    o.put("statusCode", schema.getDescription());
+		//    o.put("errMessage", schema.getExample().toString().replace("\n", "\\n"));
+		//}
+		//if(apiResponses.get(key).getHeaders()!=null && !apiResponses.get(key).getHeaders().isEmpty()){
+                //    String sc = apiResponses.get(key).getHeaders().entrySet().iterator().next().getValue().getDescription();
+		//    try
+                //    {
+                //       Integer.parseInt(sc);
+                //    }
+                //    catch (NumberFormatException ex)
+                //    {
+		//       LOGGER.error(apiResponses.get(key).getHeaders().entrySet().iterator().next().getValue().getDescription() + ": description should be status code number.");
+                //    }
+	        //    //get statuscode from description in #/components/responses/{keyName}/headers/{header[0]}/description
+		//    o.put("statusCode", sc);
+		//}
+                //
+		//o.put("name", firstLetterToUpper(key));
+		status.add(o);
+	    }
+	    additionalProperties.put("status", status);
+	}
 
         super.preprocessOpenAPI(openAPI);
     }
@@ -455,8 +530,62 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 
         return type;
     }
-
-
+    
+    private Map<String, Object> resp2statusCode(ApiResponse apiResponse,Map<String, Schema> schemas ){
+        Map<String, Object> o = new HashMap<>();
+        if(apiResponse.getContent()!=null 
+        		&& apiResponse.getContent().get("application/json")!=null 
+        		&& apiResponse.getContent().get("application/json").getSchema()!=null){
+        
+            Schema schema = new Schema();
+            Schema json = apiResponse.getContent().get("application/json").getSchema();
+	    String statusType = apiResponse.getDescription();
+	    if(apiResponse.getDescription() != null){
+                if(statusType.contains(" ")){
+                    if(statusType.split(" ")[0].equals("ad-hoc")){
+                        statusType = statusType.split(" ")[1];
+                    }else{
+                        LOGGER.error(statusType + ": syntax err, should be single word or prefix 'ad-hoc'");
+                    }
+                }
+                o.put("name", firstLetterToUpper(statusType));
+	    }
+            if(json.get$ref()!=null){
+                String ref = json.get$ref();
+                ArrayList<String> refls = new ArrayList(Arrays.asList(ref.split("/")));
+                ref = refls.get(refls.size() - 1).toString();
+                final Map<String, Schema> propertyMap = schemas.get(ref).getProperties();
+                ArrayList<Schema> ss = new ArrayList<>(propertyMap.values());
+                //get schema from description in #/components/schema/{ref}/content/schema/properties/{firstItem}
+                schema = ss.get(0);
+            }else{
+                final Map<String, Schema> propertyMap = json.getProperties();
+                ArrayList<Schema> ss = new ArrayList<>(propertyMap.values());
+                //get schema from description in #/components/responses/{keyName}/content/schema/properties/{firstItem}
+                schema = ss.get(0);
+            }
+	    if(schema.getDescription() != null){
+                o.put("statusCode", schema.getDescription());
+	    }
+	    if(schema.getExample() != null){
+                o.put("errMessage", schema.getExample().toString().replace("\n", "\\n"));
+	    }
+        }
+        if(apiResponse.getHeaders()!=null && !apiResponse.getHeaders().isEmpty()){
+            String sc = apiResponse.getHeaders().entrySet().iterator().next().getValue().getDescription();
+            try
+            {
+               Integer.parseInt(sc);
+            }
+            catch (NumberFormatException ex)
+            {
+               LOGGER.error(apiResponse.getHeaders().entrySet().iterator().next().getValue().getDescription() + ": description should be status code number.");
+            }
+            //get statuscode from description in #/components/responses/{keyName}/headers/{header[0]}/description
+            o.put("statusCode", sc);
+        }
+        return o;
+    }
 
     @Override
     public CodegenOperation fromOperation(String resourcePath, String httpMethod, Operation operation, Map<String, Schema> definitions, OpenAPI openAPI) {
@@ -510,11 +639,6 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
             type.add("Maybe " + paramType);
         }
 
-	// todo
-	// err status code
-	
-	path.add("NoThrow");
-
         // Add the HTTP method and return type
         String returnType = op.returnType;
         if (returnType == null || returnType.equals("null")) {
@@ -523,11 +647,46 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         if (returnType.indexOf(" ") >= 0) {
             returnType = "(" + returnType + ")";
         }
-        path.add("Verb '" + op.httpMethod.toUpperCase() + " 200 '[JSON] " + returnType);
+
+	List<String> errStatus = new ArrayList<>();
+	List<Map<String, Object>> status = new ArrayList<>();
+	boolean not2xx = false;
+	ApiResponses resps = operation.getResponses();
+
+	for(String key : resps.keySet()){
+            if(Integer.parseInt(key)/100 != 2){
+		not2xx = true;
+	        ApiResponse resp = resps.get(key);
+		if(resp.getDescription() == null){
+		    LOGGER.warn("description not found");
+		}else{
+                    String statusType = resp.getDescription();
+		    if(statusType.contains(" ")){
+			if(!statusType.split(" ")[0].equals("ad-hoc")){
+	                    LOGGER.error(statusType + ": syntax err, should be single word or prefix 'ad-hoc'");
+			}else{
+		            statusType = statusType.split(" ")[1];
+		            status.add(resp2statusCode(resp, openAPI.getComponents().getSchemas()));
+			}
+		    }
+		    statusType = firstLetterToUpper(statusType);
+		    path.add("Throws " + statusType);
+		    errStatus.add(statusType);
+		}
+	    }
+	}
+        op.vendorExtensions.put("x-ad-hocStatus", status);
+
+	if(!not2xx){
+	    path.add("NoThrow");
+	}
+
+        path.add("Verb '" + op.httpMethod.toUpperCase() + " " + op.responses.get(0).code + " '[JSON] " + returnType);
         type.add("m " + returnType);
-        func.add("Handler (Envelope '[] " + returnType + ")");
+        func.add("Handler (Envelope '" + errStatus.toString() + " " + returnType + ")");
 
         op.vendorExtensions.put("x-funcs", joinStrings(" -> ", func));
+        op.vendorExtensions.put("x-errStatus", errStatus);
         op.vendorExtensions.put("x-args", args);
         op.vendorExtensions.put("x-routeType", joinStrings(" :> ", path));
         op.vendorExtensions.put("x-formName", "Form" + camelize(op.operationId));
@@ -570,7 +729,12 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
     @Override
     public CodegenModel fromModel(String name, Schema schema, Map<String, Schema> allSchemas) {
         CodegenModel model = super.fromModel(name, schema, allSchemas);
-
+	//LOGGER.info("model");
+	//LOGGER.info(model.toString());
+	if(schema.getDescription()!=null){
+	LOGGER.info("schema");
+	LOGGER.info(schema.getDescription().toString());
+	}
         // Clean up the class name to remove invalid characters
         model.classname = fixModelChars(model.classname);
         if(typeMapping.containsValue(model.classname)) {
