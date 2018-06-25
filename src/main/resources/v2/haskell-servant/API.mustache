@@ -31,7 +31,7 @@ import Servant (Server, serve, Handler)
 import Servant.API
 import Servant.API.Verbs (StdMethod(..), Verb)
 import Servant.Checked.Exceptions (Envelope, ErrStatus(..), Throws, NoThrow, pureSuccEnvelope, pureErrEnvelope)
-{{#apiInfo}}{{#apis}}{{#operations}}{{#operation}}{{#hasFormParams}}import Web.FormUrlEncoded(ToForm, FromForm){{/hasFormParams}}{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
+import Web.FormUrlEncoded(ToForm, FromForm)
 import Network.Wai (Application)
 
 {{#apiInfo}}{{#apis}}{{#operations}}{{#operation}}{{#hasFormParams}}

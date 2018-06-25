@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# OPTIONS_GHC -fno-warn-unused-binds -fno-warn-unused-imports #-}
+{-# LANGUAGE InstanceSigs #-}
 
 module {{title}}.Types ({{#models}}{{#model}}
   {{classname}} (..),{{/model}}{{/models}}
@@ -11,13 +12,16 @@ import Data.Time.Clock.POSIX (POSIXTime)
 import Data.Char (toLower)
 import Data.List (stripPrefix)
 import Data.Maybe (fromMaybe)
-import Data.Aeson (Value, FromJSON(..), ToJSON(..), genericToJSON, genericParseJSON)
-import Data.Aeson.Types (Options(..), defaultOptions)
-import Data.Text (Text)
+import Text.Read (readMaybe)
+import Data.Aeson (Value, FromJSON(..), ToJSON(..), genericToJSON, genericParseJSON, withText)
+import Data.Aeson.Types (Options(..), defaultOptions, Parser)
+import Data.Text (Text, unpack)
 import qualified Data.Text as T
 import qualified Data.Map as Map
 import GHC.Generics (Generic)
 import Data.Function ((&))
+import Network.HTTP.Types (Status(..){{#each status}}, status{{statusCode}}{{/each}})
+import Servant.Checked.Exceptions (ErrStatus(..))
 {{#imports}}import {{import}}
 {{/imports}}
 
@@ -48,12 +52,9 @@ instance ErrStatus {{name}} where
   toErrStatus _ = status{{statusCode}}
 {{/each}}{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
 
-{{#models}}
-{{#model}}
+{{#models}}{{#model}}{{#if vendorExtensions.x-2xxorReqBody}}
 -- | {{description}} {{operationId}}
-{{^vendorExtensions.x-customNewtype}}
-{{^parent}}
-{{vendorExtensions.x-data}} {{classname}} = {{classname}}
+{{^vendorExtensions.x-customNewtype}}{{^parent}}{{vendorExtensions.x-data}} {{classname}} = {{classname}}
 {{#vars}}{{#if @first}}  { {{else}}  , {{/if}}{{& name}} :: {{datatype}} -- ^ {{& description}}
 {{/vars}}  }deriving (Show, Eq, Generic)
 instance FromJSON {{classname}} where
@@ -65,7 +66,7 @@ newtype {{classname}} = {{classname}} { un{{classname}} :: {{parent}} }
   deriving (Show, Eq, FromJSON, ToJSON, Generic)
 {{/parent}}{{/vendorExtensions.x-customNewtype}}{{#vendorExtensions.x-customNewtype}}
 newtype {{classname}} = {{classname}} {{vendorExtensions.x-customNewtype}} deriving (Show, Eq, FromJSON, ToJSON, Generic)
-{{/vendorExtensions.x-customNewtype}}{{/model}}{{/models}}
+{{/vendorExtensions.x-customNewtype}}{{/if}}{{/model}}{{/models}}
 -- Remove a field label prefix during JSON parsing.
 -- Also perform any replacements for special characters.
 removeFieldLabelPrefix :: String -> Options

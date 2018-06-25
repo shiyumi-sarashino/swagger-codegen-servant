@@ -285,6 +285,10 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         }
         additionalProperties.put("specialCharReplacements", replacements);
 
+        Map<String, Schema> schemas = new HashMap<String, Schema>();
+	if(openAPI.getComponents() != null && openAPI.getComponents().getSchemas() != null){
+	    schemas = openAPI.getComponents().getSchemas();
+	}
         if (openAPI.getPaths() != null) {
             for (String pathname : openAPI.getPaths().keySet()) {
                 PathItem pathItem = openAPI.getPaths().get(pathname);
@@ -295,20 +299,72 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
                             operation.addExtension("x-tags", operation.getTags());
 			}
 		        if(operation.getOperationId()!=null){
-		            String opId = operation.getOperationId();
+		            String opId = firstLetterToUpper(operation.getOperationId());
 			    // todo RequestBody and Responses datatype annotation to description
 			    // if description start with '-TypeName ' then use 'description.split(" ")[1]'
 		            //LOGGER.info(operation.toString());
 	                    Map<String, ApiResponse> resps = operation.getResponses();
-			    Set<String> keys = resps.keySet();
-	                    List<Map<String, Object>> status = new ArrayList<>();
-			    for(String key : keys){
+			    Set<String> resKeys = resps.keySet();
+			    for(String key : resKeys){
+			        ApiResponse resp = resps.get(key);
+				String type = "";
                                 if(Integer.parseInt(key)/100 == 2){
-			            LOGGER.info(key);
-			            LOGGER.info(resps.get(key).getDescription());
-			            //resps.get(key).description = "prefix";
+		                    type = "-TypeName ";
+				}else{
+		                    type = "-ErrType ";
+				}
+			        if(resp.getContent() != null
+			            && resp.getContent().get("application/json") != null
+			            && resp.getContent().get("application/json").getSchema() != null
+			            && resp.getContent().get("application/json").getSchema().get$ref() != null){
+
+			            String ref = resp.getContent().get("application/json").getSchema().get$ref();
+		                    ArrayList<String> refls = new ArrayList(Arrays.asList(ref.split("/")));
+		                    ref = refls.get(refls.size() - 1).toString();
+                                    Schema s = schemas.get(ref);
+			            if(s.getDescription() == null){
+			                s.setDescription("");
+			            }
+
+			            if(!s.getDescription().contains(type)){
+					if(type == "-TypeName "){
+			                    s.setDescription(type + "Res" + opId + " " + s.getDescription());
+					}else{
+	                                    if(resp.getDescription() != null){
+					        String errType = resp.getDescription();
+                                                if(errType.contains(" ")){
+                                                    if(errType.split(" ")[0].equals("ad-hoc")){
+                                                        errType = errType.split(" ")[1];
+                                                    }else{
+                                                        LOGGER.error(errType + ": syntax err, should be single word or prefix 'ad-hoc'");
+                                                    }
+					        }
+                                                errType = firstLetterToUpper(errType);
+			                        s.setDescription(type + errType + " " + s.getDescription());
+					    }
+					}
+			            }
 				}
 			    }
+			    if(operation.getRequestBody() != null &&
+			        operation.getRequestBody().getContent() != null &&
+                                operation.getRequestBody().getContent().get("application/json") != null &&
+                                operation.getRequestBody().getContent().get("application/json").getSchema() != null){
+
+                                Schema req = operation.getRequestBody().getContent().get("application/json").getSchema();
+				String ref = req.get$ref();
+		                ArrayList<String> refls = new ArrayList(Arrays.asList(ref.split("/")));
+		                ref = refls.get(refls.size() - 1).toString();
+		                Schema s = schemas.get(ref);
+
+			       	if(s.getDescription() == null){
+			            s.setDescription("");
+				}
+
+			        if(!s.getDescription().contains("-TypeName ")){
+                                    s.setDescription("-TypeName ReqBody" + opId + " " + s.getDescription());
+				}
+                            }
 		        }
                     }
                 }
@@ -317,10 +373,6 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 	if (openAPI.getComponents() != null && openAPI.getComponents().getResponses() != null) {
 	    Map<String, ApiResponse> apiResponses = openAPI.getComponents().getResponses();
 	    List<Map<String, Object>> status = new ArrayList<>();
-	    Map<String, Schema> schemas = new HashMap<String, Schema>();
-	    if(openAPI.getComponents().getSchemas() != null){
-	        schemas = openAPI.getComponents().getSchemas();
-	    }
 
             for (String key : apiResponses.keySet()) {
                 Map<String, Object> o = resp2statusCode(apiResponses.get(key), openAPI.getComponents().getSchemas());
@@ -638,7 +690,7 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 	    args.add(true);
             type.add("Maybe " + paramType);
         }
-
+        
         // Add the HTTP method and return type
         String returnType = op.returnType;
         if (returnType == null || returnType.equals("null")) {
@@ -653,10 +705,14 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 	boolean not2xx = false;
 	ApiResponses resps = operation.getResponses();
 
+        Map<String, Schema> schemas = new HashMap<String, Schema>();
+	if(openAPI.getComponents() != null && openAPI.getComponents().getSchemas() != null){
+	    schemas = openAPI.getComponents().getSchemas();
+	}
 	for(String key : resps.keySet()){
+	    ApiResponse resp = resps.get(key);
             if(Integer.parseInt(key)/100 != 2){
 		not2xx = true;
-	        ApiResponse resp = resps.get(key);
 		if(resp.getDescription() == null){
 		    LOGGER.warn("description not found");
 		}else{
@@ -673,6 +729,28 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 		    path.add("Throws " + statusType);
 		    errStatus.add(statusType);
 		}
+	    }else{
+                if(resp.getContent()!=null
+                    	    && resp.getContent().get("application/json")!=null
+                    	    && resp.getContent().get("application/json").getSchema()!=null
+                    	    && resp.getContent().get("application/json").getSchema().get$ref()!=null){
+	            String ref = resp.getContent().get("application/json").getSchema().get$ref();
+		    ArrayList<String> refls = new ArrayList(Arrays.asList(ref.split("/")));
+		    ref = refls.get(refls.size() - 1).toString();
+                    Schema s = schemas.get(ref);
+
+	            if(s.getDescription()!=null && s.getDescription().contains("-TypeName ")){
+                        List<String> ss = new ArrayList<>(Arrays.asList(s.getDescription().split(" ")));
+	                Integer size = ss.size();
+	                String typeName = null;
+	                for(Integer i = 0; i < size; i++){
+	                    if(ss.get(i).equals("-TypeName")){
+                                returnType = ss.get(i+1);
+	                        break;
+	                    }
+	                }
+	            }
+                }
 	    }
 	}
         op.vendorExtensions.put("x-ad-hocStatus", status);
@@ -729,12 +807,30 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
     @Override
     public CodegenModel fromModel(String name, Schema schema, Map<String, Schema> allSchemas) {
         CodegenModel model = super.fromModel(name, schema, allSchemas);
-	//LOGGER.info("model");
-	//LOGGER.info(model.toString());
-	if(schema.getDescription()!=null){
-	LOGGER.info("schema");
-	LOGGER.info(schema.getDescription().toString());
+	String type = "";
+	if(schema.getDescription()!=null && schema.getDescription().contains("-TypeName ")){
+            type = "-TypeName ";
+	}else if(schema.getDescription()!=null && schema.getDescription().contains("-ErrType ")){
+            type = "-ErrType ";
 	}
+	if(type != ""){
+            List<String> ss = new ArrayList<>(Arrays.asList(schema.getDescription().split(" ")));
+	    Integer size = ss.size();
+	    String typeName = null;
+	    for(Integer i = 0; i < size; i++){
+	        if(ss.get(i).equals(type.replaceAll("\\s+",""))){
+                    typeName = ss.get(i+1);
+		    break;
+		}
+	    }
+	    if(typeName != null){
+		model.classname = typeName;
+		if(type == "-TypeName "){
+                    model.vendorExtensions.put("x-2xxorReqBody", true);
+		}
+	    }
+	}
+		LOGGER.info(model.classname);
         // Clean up the class name to remove invalid characters
         model.classname = fixModelChars(model.classname);
         if(typeMapping.containsValue(model.classname)) {
