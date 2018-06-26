@@ -299,10 +299,8 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
                             operation.addExtension("x-tags", operation.getTags());
 			}
 		        if(operation.getOperationId()!=null){
+			    // generating type annotation of responses in its description
 		            String opId = firstLetterToUpper(operation.getOperationId());
-			    // todo RequestBody and Responses datatype annotation to description
-			    // if description start with '-TypeName ' then use 'description.split(" ")[1]'
-		            //LOGGER.info(operation.toString());
 	                    Map<String, ApiResponse> resps = operation.getResponses();
 			    Set<String> resKeys = resps.keySet();
 			    for(String key : resKeys){
@@ -323,25 +321,16 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 		                    ref = refls.get(refls.size() - 1).toString();
                                     Schema s = schemas.get(ref);
 			            if(s.getDescription() == null){
-			                s.setDescription("");
-			            }
-
-			            if(!s.getDescription().contains(type)){
+					if(type == "-TypeName "){
+			                    s.setDescription(type + "Res" + opId);
+					}else{
+			                    s.setDescription(type + "Err" + key + opId + " -StatusCode " + key);
+					}
+				   }else if(!s.getDescription().contains(type)){
 					if(type == "-TypeName "){
 			                    s.setDescription(type + "Res" + opId + " " + s.getDescription());
 					}else{
-	                                    if(resp.getDescription() != null){
-					        String errType = resp.getDescription();
-                                                if(errType.contains(" ")){
-                                                    if(errType.split(" ")[0].equals("ad-hoc")){
-                                                        errType = errType.split(" ")[1];
-                                                    }else{
-                                                        LOGGER.error(errType + ": syntax err, should be single word or prefix 'ad-hoc'");
-                                                    }
-					        }
-                                                errType = firstLetterToUpper(errType);
-			                        s.setDescription(type + errType + " " + s.getDescription());
-					    }
+			                    s.setDescription(type + "Err" + key + opId + " -StatusCode " + key + " " + s.getDescription());
 					}
 			            }
 				}
@@ -349,19 +338,15 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 			    if(operation.getRequestBody() != null &&
 			        operation.getRequestBody().getContent() != null &&
                                 operation.getRequestBody().getContent().get("application/json") != null &&
-                                operation.getRequestBody().getContent().get("application/json").getSchema() != null){
+                                operation.getRequestBody().getContent().get("application/json").getSchema() != null &&
+                                operation.getRequestBody().getContent().get("application/json").getSchema().get$ref() != null){
 
-                                Schema req = operation.getRequestBody().getContent().get("application/json").getSchema();
-				String ref = req.get$ref();
+				String ref = operation.getRequestBody().getContent().get("application/json").getSchema().get$ref();
 		                ArrayList<String> refls = new ArrayList(Arrays.asList(ref.split("/")));
 		                ref = refls.get(refls.size() - 1).toString();
 		                Schema s = schemas.get(ref);
 
-			       	if(s.getDescription() == null){
-			            s.setDescription("");
-				}
-
-			        if(!s.getDescription().contains("-TypeName ")){
+			       	if(s.getDescription() == null || !s.getDescription().contains("-TypeName ")){
                                     s.setDescription("-TypeName ReqBody" + opId + " " + s.getDescription());
 				}
                             }
@@ -375,47 +360,7 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 	    List<Map<String, Object>> status = new ArrayList<>();
 
             for (String key : apiResponses.keySet()) {
-                Map<String, Object> o = resp2statusCode(apiResponses.get(key), openAPI.getComponents().getSchemas());
-
-                //Map<String, Object> o = new HashMap<>();
-		//if(apiResponses.get(key).getContent()!=null 
-		//		&& apiResponses.get(key).getContent().get("application/json")!=null 
-		//		&& apiResponses.get(key).getContent().get("application/json").getSchema()!=null){
-                //
-		//    Schema schema = new Schema();
-		//    Schema json = apiResponses.get(key).getContent().get("application/json").getSchema();
-		//    if(json.get$ref()!=null){
-		//        String ref = json.get$ref();
-		//        ArrayList<String> refls = new ArrayList(Arrays.asList(ref.split("/")));
-		//        ref = refls.get(refls.size() - 1).toString();
-                //        final Map<String, Schema> propertyMap = schemas.get(ref).getProperties();
-		//        ArrayList<Schema> ss = new ArrayList<>(propertyMap.values());
-	        //        //get schema from description in #/components/schema/{ref}/content/schema/properties/{firstItem}
-		//        schema = ss.get(0);
-                //    }else{
-                //        final Map<String, Schema> propertyMap = json.getProperties();
-		//        ArrayList<Schema> ss = new ArrayList<>(propertyMap.values());
-	        //        //get schema from description in #/components/responses/{keyName}/content/schema/properties/{firstItem}
-		//        schema = ss.get(0);
-		//    }
-		//    o.put("statusCode", schema.getDescription());
-		//    o.put("errMessage", schema.getExample().toString().replace("\n", "\\n"));
-		//}
-		//if(apiResponses.get(key).getHeaders()!=null && !apiResponses.get(key).getHeaders().isEmpty()){
-                //    String sc = apiResponses.get(key).getHeaders().entrySet().iterator().next().getValue().getDescription();
-		//    try
-                //    {
-                //       Integer.parseInt(sc);
-                //    }
-                //    catch (NumberFormatException ex)
-                //    {
-		//       LOGGER.error(apiResponses.get(key).getHeaders().entrySet().iterator().next().getValue().getDescription() + ": description should be status code number.");
-                //    }
-	        //    //get statuscode from description in #/components/responses/{keyName}/headers/{header[0]}/description
-		//    o.put("statusCode", sc);
-		//}
-                //
-		//o.put("name", firstLetterToUpper(key));
+                Map<String, Object> o = errResp2status(apiResponses.get(key), openAPI.getComponents().getSchemas());
 		status.add(o);
 	    }
 	    additionalProperties.put("status", status);
@@ -436,7 +381,7 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         if (s instanceof ArraySchema) {
             ArraySchema sp = (ArraySchema) s;
             Schema inner = sp.getItems();
-	    // return String.format("%s<%s>", getSchemaType(s), getTypeDeclaration(inner));
+            // return String.format("%s<%s>", getSchemaType(s), getTypeDeclaration(inner));
             return "[" + getTypeDeclaration(inner) + "]";
         } else if (s instanceof MapSchema || s.getAdditionalProperties() != null) {
             Schema inner = (Schema) s.getAdditionalProperties();
@@ -445,6 +390,7 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         }
         return fixModelChars(super.getTypeDeclaration(s));
     }
+
 
     /**
      * Optional - swagger type conversion.  This is used to map swagger types in a `Property` into
@@ -474,12 +420,12 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
     @Override
     public String toInstantiationType(Schema s) {
         if (s instanceof MapSchema) {
-            MapSchema mS = (MapSchema) s;
-	    String inner = getSchemaType((Schema) mS.getAdditionalProperties());
+            MapSchema ms = (MapSchema) s;
+	    String inner = getSchemaType((Schema) ms.getAdditionalProperties());
             return inner;
         } else if (s instanceof ArraySchema) {
-            ArraySchema aS = (ArraySchema) s;
-            String inner = getSchemaType(aS.getItems());
+            ArraySchema as = (ArraySchema) s;
+            String inner = getSchemaType(as.getItems());
             // Return only the inner type; the wrapping with QueryList is done
             // somewhere else, where we have access to the collection format.
 	    return "[" + inner + "]";
@@ -557,85 +503,69 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         // Intersperse the servant route pieces with :> to construct the final API type
         return capType;
     }
-
-    // Extract the arguments that are passed in the route path parameters
-    private List<String> pathToClientType(String path, List<CodegenParameter> pathParams) {
-        // Map the capture params by their names.
-        HashMap<String, String> captureTypes = new HashMap<String, String>();
-        for (CodegenParameter param : pathParams) {
-            captureTypes.put(param.baseName, param.dataType);
-        }
-
-        // Cut off the leading slash, if it is present.
-        if (path.startsWith("/")) {
-            path = path.substring(1);
-        }
-
-        // Convert the path into a list of servant route components.
-        List<String> type = new ArrayList<String>();
-        for (String piece : path.split("/")) {
-            if (piece.startsWith("{") && piece.endsWith("}")) {
-                String name = piece.substring(1, piece.length() - 1);
-                type.add(captureTypes.get(name));
+    
+    private String descriptionToErrType(String desc){
+        List<String> ss = new ArrayList<>(Arrays.asList(desc.split(" ")));
+        Integer size = ss.size();
+	String errType = "";
+        for(Integer i=0; i<size; i++){
+            if(ss.get(i).equals("-ErrType") && ss.get(i+1) != null){
+                errType = ss.get(i+1);
+        	    if(errType.equals("ad-hoc") && ss.get(i+2) != null){
+        	        errType = ss.get(i+2);
+        	    }
+        	break;
             }
         }
-
-        return type;
+	return firstLetterToUpper(errType);
     }
-    
-    private Map<String, Object> resp2statusCode(ApiResponse apiResponse,Map<String, Schema> schemas ){
+    private Map<String, Object> errResp2status(ApiResponse apiResponse,Map<String, Schema> schemas ){
         Map<String, Object> o = new HashMap<>();
-        if(apiResponse.getContent()!=null 
-        		&& apiResponse.getContent().get("application/json")!=null 
-        		&& apiResponse.getContent().get("application/json").getSchema()!=null){
-        
-            Schema schema = new Schema();
+        Schema schema = new Schema();
+        if( apiResponse.getContent()!=null
+         && apiResponse.getContent().get("application/json")!=null
+         && apiResponse.getContent().get("application/json").getSchema()!=null){
             Schema json = apiResponse.getContent().get("application/json").getSchema();
-	    String statusType = apiResponse.getDescription();
-	    if(apiResponse.getDescription() != null){
-                if(statusType.contains(" ")){
-                    if(statusType.split(" ")[0].equals("ad-hoc")){
-                        statusType = statusType.split(" ")[1];
-                    }else{
-                        LOGGER.error(statusType + ": syntax err, should be single word or prefix 'ad-hoc'");
-                    }
-                }
-                o.put("name", firstLetterToUpper(statusType));
-	    }
-            if(json.get$ref()!=null){
+	    if(apiResponse.getContent().get("application/json").getSchema().get$ref()!=null){
+
                 String ref = json.get$ref();
                 ArrayList<String> refls = new ArrayList(Arrays.asList(ref.split("/")));
                 ref = refls.get(refls.size() - 1).toString();
-                final Map<String, Schema> propertyMap = schemas.get(ref).getProperties();
-                ArrayList<Schema> ss = new ArrayList<>(propertyMap.values());
-                //get schema from description in #/components/schema/{ref}/content/schema/properties/{firstItem}
-                schema = ss.get(0);
-            }else{
-                final Map<String, Schema> propertyMap = json.getProperties();
-                ArrayList<Schema> ss = new ArrayList<>(propertyMap.values());
-                //get schema from description in #/components/responses/{keyName}/content/schema/properties/{firstItem}
-                schema = ss.get(0);
-            }
-	    if(schema.getDescription() != null){
-                o.put("statusCode", schema.getDescription());
+		json = schemas.get(ref);
 	    }
-	    if(schema.getExample() != null){
-                o.put("errMessage", schema.getExample().toString().replace("\n", "\\n"));
+            List<String> sd = new ArrayList<>(Arrays.asList(json.getDescription().split(" ")));
+            Integer size = sd.size();
+	    String errType = "";
+	    String statusCode = "";
+	    if(json.getDescription() != null){
+                errType = descriptionToErrType(json.getDescription()); 
 	    }
-        }
-        if(apiResponse.getHeaders()!=null && !apiResponse.getHeaders().isEmpty()){
-            String sc = apiResponse.getHeaders().entrySet().iterator().next().getValue().getDescription();
-            try
-            {
-               Integer.parseInt(sc);
+            for(Integer i=0; i<size; i++){
+                if(sd.get(i).equals("-StatusCode") && sd.get(i+1) != null){
+                    statusCode = sd.get(i+1);
+                    try
+                    {
+                       Integer.parseInt(statusCode);
+                    }
+                    catch (NumberFormatException ex)
+                    {
+                       LOGGER.error(statusCode + ": description should be status code number.");
+                    }
+                    break;
+                }
             }
-            catch (NumberFormatException ex)
-            {
-               LOGGER.error(apiResponse.getHeaders().entrySet().iterator().next().getValue().getDescription() + ": description should be status code number.");
-            }
-            //get statuscode from description in #/components/responses/{keyName}/headers/{header[0]}/description
-            o.put("statusCode", sc);
+            o.put("name", firstLetterToUpper(errType));
+            o.put("statusCode", statusCode);
+
+
+            final Map<String, Schema> propertyMap = json.getProperties();
+            ArrayList<Schema> ss = new ArrayList<>(propertyMap.values());
+            //get schema from description in #/components/responses/{keyName}/content/schema/properties/{firstItem}
+            schema = ss.get(0);
         }
+	if(schema != null && schema.getExample() != null){
+            o.put("errMessage", schema.getExample().toString().replace("\n", "\\n"));
+	}
         return o;
     }
 
@@ -645,10 +575,9 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 
         List<String> path = pathToServantRoute(op.path, op.allParams);
         List<String> func = pathToFuncType(op.path, op.allParams);
-        List<String> type = pathToClientType(op.path, op.pathParams);
 	List<Boolean> args = new ArrayList<Boolean>();
 
-        if(!func.isEmpty()){
+        for(Integer i = 0; i < func.size(); i++){
 	    args.add(true);
 	}
 
@@ -658,7 +587,6 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
             path.add("QueryParam \"" + param.baseName + "\" " + paramType);
 	    func.add("Maybe " + paramType);
 	    args.add(true);
-            type.add("Maybe " + paramType);
         }
 
         // Either body or form data parameters appended to route
@@ -668,7 +596,6 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         if (op.getHasBodyParam()) {
             for (CodegenParameter param : op.bodyParams) {
                 bodyType = param.dataType;
-                type.add(bodyType);
 	        func.add(bodyType);
 	        args.add(true);
                 path.add("ReqBody '[JSON] " + bodyType);
@@ -676,7 +603,6 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         } else if(op.getHasFormParams()) {
             // Use the FormX data type, where X is the conglomerate of all things being passed
             bodyType = "Form" + camelize(op.operationId);
-            type.add(bodyType);
 	    func.add(bodyType);
 	    args.add(true);
             path.add("ReqBody '[FormUrlEncoded] " + bodyType);
@@ -688,7 +614,6 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
             String paramType = param.dataType;
 	    func.add("Maybe " + paramType);
 	    args.add(true);
-            type.add("Maybe " + paramType);
         }
         
         // Add the HTTP method and return type
@@ -711,46 +636,49 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 	}
 	for(String key : resps.keySet()){
 	    ApiResponse resp = resps.get(key);
-            if(Integer.parseInt(key)/100 != 2){
-		not2xx = true;
-		if(resp.getDescription() == null){
-		    LOGGER.warn("description not found");
-		}else{
-                    String statusType = resp.getDescription();
-		    if(statusType.contains(" ")){
-			if(!statusType.split(" ")[0].equals("ad-hoc")){
-	                    LOGGER.error(statusType + ": syntax err, should be single word or prefix 'ad-hoc'");
-			}else{
-		            statusType = statusType.split(" ")[1];
-		            status.add(resp2statusCode(resp, openAPI.getComponents().getSchemas()));
-			}
-		    }
-		    statusType = firstLetterToUpper(statusType);
-		    path.add("Throws " + statusType);
-		    errStatus.add(statusType);
-		}
-	    }else{
-                if(resp.getContent()!=null
-                    	    && resp.getContent().get("application/json")!=null
-                    	    && resp.getContent().get("application/json").getSchema()!=null
-                    	    && resp.getContent().get("application/json").getSchema().get$ref()!=null){
-	            String ref = resp.getContent().get("application/json").getSchema().get$ref();
-		    ArrayList<String> refls = new ArrayList(Arrays.asList(ref.split("/")));
-		    ref = refls.get(refls.size() - 1).toString();
-                    Schema s = schemas.get(ref);
+            if(resp.getContent()!=null
+            && resp.getContent().get("application/json")!=null
+            && resp.getContent().get("application/json").getSchema()!=null
+            && resp.getContent().get("application/json").getSchema().get$ref()!=null){
 
-	            if(s.getDescription()!=null && s.getDescription().contains("-TypeName ")){
+		String ref = resp.getContent().get("application/json").getSchema().get$ref();
+		ArrayList<String> refls = new ArrayList(Arrays.asList(ref.split("/")));
+		ref = refls.get(refls.size() - 1).toString();
+                Schema s = schemas.get(ref);
+                if(Integer.parseInt(key)/100 != 2){
+	            not2xx = true;
+                   List<String> ss = new ArrayList<>(Arrays.asList(s.getDescription().split(" ")));
+                   Integer size = ss.size();
+                   String errType = "";
+                   for(Integer i=0; i<size; i++){
+                       if(ss.get(i).equals("-ErrType") && ss.get(i+1) != null){
+                           errType = ss.get(i+1);
+                   	    if(errType.equals("ad-hoc") && ss.get(i+2) != null){
+                   	        errType = ss.get(i+2);
+	                       status.add(errResp2status(resp, schemas));
+                   	    }
+                   	break;
+                       }
+                   }
+	           path.add("Throws " + camelize(fixModelChars(errType)));
+	           errStatus.add(camelize(fixModelChars(errType)));
+	        }else{
+                    if (s instanceof ArraySchema) {
+	                ArraySchema as = (ArraySchema) s;
+	                String inner = getSchemaType(as.getItems());
+                        returnType = "[" + camelize(fixModelChars(inner)) + "]";
+                    }else if(s.getDescription()!=null && s.getDescription().contains("-TypeName ")){
                         List<String> ss = new ArrayList<>(Arrays.asList(s.getDescription().split(" ")));
 	                Integer size = ss.size();
 	                String typeName = null;
 	                for(Integer i = 0; i < size; i++){
 	                    if(ss.get(i).equals("-TypeName")){
-                                returnType = ss.get(i+1);
+                                returnType = camelize(fixModelChars(ss.get(i+1)));
 	                        break;
 	                    }
 	                }
 	            }
-                }
+	        }
 	    }
 	}
         op.vendorExtensions.put("x-ad-hocStatus", status);
@@ -760,7 +688,6 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 	}
 
         path.add("Verb '" + op.httpMethod.toUpperCase() + " " + op.responses.get(0).code + " '[JSON] " + returnType);
-        type.add("m " + returnType);
         func.add("Handler (Envelope '" + errStatus.toString() + " " + returnType + ")");
 
         op.vendorExtensions.put("x-funcs", joinStrings(" -> ", func));
@@ -809,30 +736,28 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         CodegenModel model = super.fromModel(name, schema, allSchemas);
 	String type = "";
 	if(schema.getDescription()!=null && schema.getDescription().contains("-TypeName ")){
-            type = "-TypeName ";
-	}else if(schema.getDescription()!=null && schema.getDescription().contains("-ErrType ")){
-            type = "-ErrType ";
-	}
-	if(type != ""){
             List<String> ss = new ArrayList<>(Arrays.asList(schema.getDescription().split(" ")));
 	    Integer size = ss.size();
-	    String typeName = null;
 	    for(Integer i = 0; i < size; i++){
-	        if(ss.get(i).equals(type.replaceAll("\\s+",""))){
-                    typeName = ss.get(i+1);
+	        if(ss.get(i).equals("-TypeName")){
+                    type = ss.get(i+1);
 		    break;
 		}
 	    }
-	    if(typeName != null){
-		model.classname = typeName;
-		if(type == "-TypeName "){
-                    model.vendorExtensions.put("x-2xxorReqBody", true);
-		}
+	    if(type != null){
+		model.classname = type;
 	    }
+	}else if(schema.getDescription()!=null && schema.getDescription().contains("-ErrType ")){
+	    type = descriptionToErrType(schema.getDescription());
+            model.classname = type;
+            model.vendorExtensions.put("x-errType", true);
 	}
-		LOGGER.info(model.classname);
+            
+	if(schema instanceof ArraySchema){
+	    model.vendorExtensions.put("x-arr", true);
+	}
         // Clean up the class name to remove invalid characters
-        model.classname = fixModelChars(model.classname);
+        model.classname = firstLetterToUpper(camelize(fixModelChars(model.classname),true));
         if(typeMapping.containsValue(model.classname)) {
             model.classname += "_";
         }
