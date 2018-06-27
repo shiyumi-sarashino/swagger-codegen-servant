@@ -4,7 +4,8 @@
 {-# LANGUAGE InstanceSigs #-}
 
 module {{title}}.Types ({{#models}}{{#model}}{{#if vendorExtensions.x-arr}}{{else}}
-  {{classname}} (..),{{/if}}{{/model}}{{/models}}
+  {{classname}} (..),{{#vars}}{{#if _enum}}
+  {{vendorExtensions.x-nameUpper}} (..),{{/if}}{{/vars}}{{/if}}{{/model}}{{/models}}
   ) where
 
 import Data.Time.Calendar (Day)
@@ -13,8 +14,9 @@ import Data.Char (toLower)
 import Data.List (stripPrefix)
 import Data.Maybe (fromMaybe)
 import Text.Read (readMaybe)
-import Data.Aeson (Value, FromJSON(..), ToJSON(..), genericToJSON, genericParseJSON, withText)
+import Data.Aeson (Value(..), FromJSON(..), ToJSON(..), genericToJSON, genericParseJSON, withText)
 import Data.Aeson.Types (Options(..), defaultOptions, Parser)
+import qualified Data.HashMap.Strict as HMS (lookup)
 import Data.Text (Text, unpack)
 import qualified Data.Text as T
 import qualified Data.Map as Map
@@ -55,18 +57,31 @@ instance ErrStatus {{name}} where
 {{#models}}{{#model}}{{#if vendorExtensions.x-errType}}{{else}}{{#if vendorExtensions.x-arr}}{{else}}
 -- | {{description}} {{operationId}}
 {{^vendorExtensions.x-customNewtype}}{{^parent}}{{vendorExtensions.x-data}} {{classname}} = {{classname}}
-{{#vars}}{{#if @first}}  { {{else}}  , {{/if}}{{& name}} :: {{datatype}} -- ^ {{& description}}
+{{#vars}}{{#if @first}}  { {{else}}  , {{/if}}{{& name}} :: {{#if _enum}}{{& vendorExtensions.x-nameUpper}}{{else}}{{datatype}}{{/if}} -- ^ {{& description}}
 {{/vars}}  }deriving (Show, Eq, Generic)
 instance FromJSON {{classname}} where
   parseJSON = genericParseJSON (removeFieldLabelPrefix "{{vendorExtensions.x-prefix}}")
 instance ToJSON {{classname}} where
   toJSON = genericToJSON (removeFieldLabelPrefix "{{vendorExtensions.x-prefix}}")
+{{#vars}}{{#if _enum}}
+data {{& vendorExtensions.x-nameUpper}} = {{#each _enum}}{{#if @first}}{{else}} | {{/if}}{{capitalizeFirst this}}{{/each}} deriving (Eq, Generic)
+instance Show {{& vendorExtensions.x-nameUpper}} where{{#each _enum}}
+  show {{capitalizeFirst this}} = "{{this}}"{{/each}}
+instance ToJSON {{& vendorExtensions.x-nameUpper}} where
+  toJSON = toJSON . show
+instance FromJSON {{& vendorExtensions.x-nameUpper}} where
+  parseJSON (String t) = fromString (unpack t)
+        where fromString :: String -> Parser {{& vendorExtensions.x-nameUpper}}{{#each _enum}}
+              fromString "{{this}}" = pure {{capitalizeFirst this}}{{/each}}
+              fromString _ = fail "not allowed value"
+  parseJSON _ = fail "not allowed value"{{/if}}{{/vars}}
 {{/parent}}{{#parent}}
 newtype {{classname}} = {{classname}} { un{{classname}} :: {{parent}} }
   deriving (Show, Eq, FromJSON, ToJSON, Generic)
 {{/parent}}{{/vendorExtensions.x-customNewtype}}{{#vendorExtensions.x-customNewtype}}
 newtype {{classname}} = {{classname}} {{vendorExtensions.x-customNewtype}} deriving (Show, Eq, FromJSON, ToJSON, Generic)
 {{/vendorExtensions.x-customNewtype}}{{/if}}{{/if}}{{/model}}{{/models}}
+
 -- Remove a field label prefix during JSON parsing.
 -- Also perform any replacements for special characters.
 removeFieldLabelPrefix :: String -> Options

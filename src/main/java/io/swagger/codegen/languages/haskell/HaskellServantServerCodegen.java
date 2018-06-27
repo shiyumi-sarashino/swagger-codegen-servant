@@ -19,6 +19,7 @@ import io.swagger.v3.oas.models.responses.ApiResponses;
 import static io.swagger.codegen.handlebars.helpers.ExtensionHelper.getBooleanValue;
 
 import com.github.jknack.handlebars.Handlebars;
+import com.github.jknack.handlebars.helper.StringHelpers;
 
 import java.util.*;
 import java.util.regex.Pattern;
@@ -47,6 +48,11 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
     protected String apiVersion = "0.0.1";
     private static final Pattern LEADING_UNDERSCORE = Pattern.compile("^_+");
 
+     @Override
+     public void addHandlebarHelpers(Handlebars handlebars) {
+         super.addHandlebarHelpers(handlebars);
+         handlebars.registerHelpers(StringHelpers.class);
+     }
     @Override
     public String getArgumentsLocation() {
         return "";
@@ -765,7 +771,14 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         // From the model name, compute the prefix for the fields.
         String prefix = camelize(model.classname, true);
         for(CodegenProperty prop : model.vars) {
+            if(prop.allowableValues != null) {
+		for(Integer i = 0; i < prop._enum.size(); i++){
+		    prop._enum.set(i, fixOperatorChars(prop._enum.get(i)));
+		}
+            }
             prop.name = toVarName(prefix + camelize(fixOperatorChars(prop.name)));
+	    String nameUpper = firstLetterToUpper(fixOperatorChars(prop.name));
+            prop.vendorExtensions.put("x-nameUpper", nameUpper);
         }
 
         // Create newtypes for things with non-object types

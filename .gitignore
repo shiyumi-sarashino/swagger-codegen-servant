@@ -27,3 +27,6 @@ hs_err_pid*
 
 .idea
 target/
+
+# goddamn mac shit
+*.DS_Store
