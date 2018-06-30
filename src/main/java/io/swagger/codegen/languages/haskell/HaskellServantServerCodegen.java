@@ -330,13 +330,13 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 					if(type == "-TypeName "){
 			                    s.setDescription(type + "Res" + opId);
 					}else{
-			                    s.setDescription(type + "Err" + key + opId + " -StatusCode " + key);
+			                    s.setDescription(type + "ad-hoc Err" + key + opId + " -StatusCode " + key);
 					}
 				   }else if(!s.getDescription().contains(type)){
 					if(type == "-TypeName "){
 			                    s.setDescription(type + "Res" + opId + " " + s.getDescription());
 					}else{
-			                    s.setDescription(type + "Err" + key + opId + " -StatusCode " + key + " " + s.getDescription());
+			                    s.setDescription(type + "ad-hoc Err" + key + opId + " -StatusCode " + key + " " + s.getDescription());
 					}
 			            }
 				}
@@ -352,7 +352,9 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 		                ref = refls.get(refls.size() - 1).toString();
 		                Schema s = schemas.get(ref);
 
-			       	if(s.getDescription() == null || !s.getDescription().contains("-TypeName ")){
+			       	if(s.getDescription() == null){
+                                    s.setDescription("-TypeName ReqBody" + opId);
+				}else if(!s.getDescription().contains("-TypeName ")){
                                     s.setDescription("-TypeName ReqBody" + opId + " " + s.getDescription());
 				}
                             }
@@ -364,11 +366,74 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 	if (openAPI.getComponents() != null && openAPI.getComponents().getResponses() != null) {
 	    Map<String, ApiResponse> apiResponses = openAPI.getComponents().getResponses();
 	    List<Map<String, Object>> status = new ArrayList<>();
+	    List<Integer> statusCodes = new ArrayList<>();
 
             for (String key : apiResponses.keySet()) {
-                Map<String, Object> o = errResp2status(apiResponses.get(key), openAPI.getComponents().getSchemas());
+                ApiResponse apiResponse = apiResponses.get(key);
+                Map<String, Object> o = new HashMap<>();
+                Schema schema = new Schema();
+                if( apiResponse.getContent()!=null
+                 && apiResponse.getContent().get("application/json")!=null
+                 && apiResponse.getContent().get("application/json").getSchema()!=null){
+                    Schema json = apiResponse.getContent().get("application/json").getSchema();
+                    if(apiResponse.getContent().get("application/json").getSchema().get$ref()!=null){
+                
+                        String ref = json.get$ref();
+                        ArrayList<String> refls = new ArrayList(Arrays.asList(ref.split("/")));
+                        ref = refls.get(refls.size() - 1).toString();
+                	json = schemas.get(ref);
+                    }
+                    List<String> sd = new ArrayList<>();
+                    Integer size=0;
+                    String errType = "";
+                    String statusCode = "";
+                    if(json.getDescription() != null){
+                	sd = Arrays.asList(json.getDescription().split(" "));
+                        size = sd.size();
+                        errType = descriptionToErrTypeIIFnotAdHoc(json.getDescription()); 
+			if(errType.equals("Ad-hoc")){
+			    continue;
+			}
+                    }
+                    for(Integer i=0; i<=size; i++){
+                        if(sd.get(i).equals("-StatusCode") && sd.get(i+1) != null){
+                            statusCode = sd.get(i+1);
+                            try
+                            {
+                               Integer stcd = Integer.parseInt(statusCode);
+		               Boolean orgn = true;
+		               for(Integer sc : statusCodes){
+		                   if(stcd.equals(sc)){
+		                        orgn = false;
+					LOGGER.info("debug: " + sc.toString());
+		                   }
+		               }
+			       if(orgn){
+                                   statusCodes.add(stcd);
+			       }
+                            }
+                            catch (NumberFormatException ex)
+                            {
+                               LOGGER.error(statusCode + ": description should be status code number.");
+                            }
+                            break;
+                        }
+                    }
+                    o.put("name", firstLetterToUpper(errType));
+                    o.put("statusCode", statusCode);
+                
+                    final Map<String, Schema> propertyMap = json.getProperties();
+                    ArrayList<Schema> ss = new ArrayList<>(propertyMap.values());
+                    //get schema from description in #/components/responses/{keyName}/content/schema/properties/{firstItem}
+                    schema = ss.get(0);
+                }
+                if(schema != null && schema.getExample() != null){
+                    o.put("errMessage", schema.getExample().toString().replace("\n", "\\n"));
+                }
+                
 		status.add(o);
 	    }
+	    additionalProperties.put("statusCode", statusCodes);
 	    additionalProperties.put("status", status);
 	}
 
@@ -525,7 +590,19 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         }
 	return firstLetterToUpper(errType);
     }
-    private Map<String, Object> errResp2status(ApiResponse apiResponse,Map<String, Schema> schemas ){
+    private String descriptionToErrTypeIIFnotAdHoc(String desc){
+        List<String> ss = new ArrayList<>(Arrays.asList(desc.split(" ")));
+        Integer size = ss.size();
+	String errType = "";
+        for(Integer i=0; i<size; i++){
+            if(ss.get(i).equals("-ErrType") && ss.get(i+1) != null){
+                errType = ss.get(i+1);
+        	break;
+            }
+        }
+	return firstLetterToUpper(errType);
+    }
+    private Map<String, Object> errResp2status(ApiResponse apiResponse,Map<String, Schema> schemas, CodegenOperation op){
         Map<String, Object> o = new HashMap<>();
         Schema schema = new Schema();
         if( apiResponse.getContent()!=null
@@ -539,11 +616,13 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
                 ref = refls.get(refls.size() - 1).toString();
 		json = schemas.get(ref);
 	    }
-            List<String> sd = new ArrayList<>(Arrays.asList(json.getDescription().split(" ")));
-            Integer size = sd.size();
+            List<String> sd = new ArrayList<>();
+            Integer size = 0;
 	    String errType = "";
 	    String statusCode = "";
 	    if(json.getDescription() != null){
+		sd = Arrays.asList(json.getDescription().split(" "));
+		size = sd.size();
                 errType = descriptionToErrType(json.getDescription()); 
 	    }
             for(Integer i=0; i<size; i++){
@@ -551,7 +630,18 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
                     statusCode = sd.get(i+1);
                     try
                     {
-                       Integer.parseInt(statusCode);
+                       Integer stcd = Integer.parseInt(statusCode);
+	               List<Integer> scs = (List<Integer>) additionalProperties.get("statusCode");
+		       Boolean orgn = true;
+		       for(Integer sc : scs){
+			   if(stcd.equals(sc)){
+		                orgn = false;
+			   }
+		       }
+		       if(orgn){
+		           scs.add(stcd);
+		       }
+                       additionalProperties.put("statusCode", scs);
                     }
                     catch (NumberFormatException ex)
                     {
@@ -632,7 +722,8 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
         }
 
 	List<String> errStatus = new ArrayList<>();
-	List<Map<String, Object>> status = new ArrayList<>();
+	List<Map<String, Object>> adhocStatus = new ArrayList<>();
+	List<Integer> adStatusCode = new ArrayList<>();
 	boolean not2xx = false;
 	ApiResponses resps = operation.getResponses();
 
@@ -661,7 +752,13 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
                            errType = ss.get(i+1);
                    	    if(errType.equals("ad-hoc") && ss.get(i+2) != null){
                    	        errType = ss.get(i+2);
-	                       status.add(errResp2status(resp, schemas));
+                                List<Integer> lastcs = (List<Integer>) additionalProperties.get("statusCode");
+				Integer lastsize = lastcs.size();
+	                        adhocStatus.add(errResp2status(resp, schemas, op));
+                                List<Integer> scs = (List<Integer>) additionalProperties.get("statusCode");
+				for(Integer sc : scs.subList(lastsize,scs.size())){
+					adStatusCode.add(sc);
+				}
                    	    }
                    	break;
                        }
@@ -687,7 +784,8 @@ public class HaskellServantServerCodegen extends DefaultCodegenConfig implements
 	        }
 	    }
 	}
-        op.vendorExtensions.put("x-ad-hocStatus", status);
+        op.vendorExtensions.put("x-ad-hocStatus", adhocStatus);
+        op.vendorExtensions.put("x-additionalStatusCode", adStatusCode);
 
 	if(!not2xx){
 	    path.add("NoThrow");

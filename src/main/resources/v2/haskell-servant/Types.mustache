@@ -22,7 +22,7 @@ import qualified Data.Text as T
 import qualified Data.Map as Map
 import GHC.Generics (Generic)
 import Data.Function ((&))
-import Network.HTTP.Types (Status(..){{#each status}}, status{{statusCode}}{{/each}})
+import Network.HTTP.Types (Status(..){{#each status}}, status{{statusCode}}{{/each}}{{#apiInfo}}{{#apis}}{{#operations}}{{#operation}}{{#each vendorExtensions.x-additionalStatusCode}}, status{{this}}{{/each}}{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}})
 import Servant.Checked.Exceptions (ErrStatus(..))
 {{#imports}}import {{import}}
 {{/imports}}
@@ -40,7 +40,7 @@ instance ErrStatus {{name}} where
   toErrStatus :: {{name}} -> Status
   toErrStatus _ = status{{statusCode}}
 {{/each}}{{/apiInfo}}
-{{#apiInfo}}{{#apis}}{{#operations}}{{#operation}}{{#if vendorExtensions.x-ad-hocStatus}}-- ad-hoc status code{{/if}}{{#each vendorExtensions.x-ad-hocStatus}}
+{{#apiInfo}}{{#apis}}{{#operations}}{{#operation}}{{#if vendorExtensions.x-ad-hocStatus}}-- {{operationId}} ad-hoc status code{{/if}}{{#each vendorExtensions.x-ad-hocStatus}}
 data {{name}} = {{name}} deriving (Eq, Read, Show)
 instance ToJSON {{name}} where
   toJSON :: {{name}} -> Value
@@ -52,7 +52,8 @@ instance FromJSON {{name}} where
 instance ErrStatus {{name}} where
   toErrStatus :: {{name}} -> Status
   toErrStatus _ = status{{statusCode}}
-{{/each}}{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
+{{/each}}
+{{/operation}}{{/operations}}{{/apis}}{{/apiInfo}}
 
 {{#models}}{{#model}}{{#if vendorExtensions.x-errType}}{{else}}{{#if vendorExtensions.x-arr}}{{else}}
 -- | {{description}} {{operationId}}
